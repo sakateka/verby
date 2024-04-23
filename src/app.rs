@@ -1,4 +1,7 @@
-use egui::{Button, Color32, RichText, TextBuffer, Widget};
+use egui::FontFamily::Proportional;
+use egui::FontId;
+use egui::TextStyle::*;
+use egui::{Button, Color32, RichText, Widget};
 
 /// We derive Deserialize/Serialize so we can persist app state on shutdown.
 #[derive(serde::Deserialize, serde::Serialize)]
@@ -15,7 +18,7 @@ pub struct Verby {
     edit_mode: bool,
 
     verbs: Vec<(String, String, String)>,
-    labels: Vec<Vec<String>>,
+    labels: Vec<String>,
     selection: Vec<(usize, usize)>,
 }
 
@@ -31,18 +34,7 @@ impl Default for Verby {
                 String::from("second"),
                 String::from("third"),
             )],
-            labels: vec![
-                vec![
-                    String::from("Label 1"),
-                    String::from("Label 2"),
-                    String::from("Label 3"),
-                ],
-                vec![
-                    String::from("Row 2.1"),
-                    String::from("Row 2.2"),
-                    String::from("Row 2.3"),
-                ],
-            ],
+            labels: vec![],
             selection: Vec::new(),
         }
     }
@@ -54,6 +46,23 @@ impl Verby {
         // This is also where you can customize the look and feel of egui using
         // `cc.egui_ctx.set_visuals` and `cc.egui_ctx.set_fonts`.
 
+        // Get current context style
+        let mut style = (*cc.egui_ctx.style()).clone();
+
+        // Redefine text_styles
+        style.text_styles = [
+            (Heading, FontId::new(30.0, Proportional)),
+            (Name("Heading2".into()), FontId::new(25.0, Proportional)),
+            (Name("Context".into()), FontId::new(25.0, Proportional)),
+            (Body, FontId::new(20.0, Proportional)),
+            (Monospace, FontId::new(20.0, Proportional)),
+            (Button, FontId::new(20.0, Proportional)),
+            (Small, FontId::new(10.0, Proportional)),
+        ]
+        .into();
+
+        // Mutate global style with above changes
+        cc.egui_ctx.set_style(style);
         // Load previous app state (if any).
         // Note that you must enable the `persistence` feature for this to work.
         if let Some(storage) = cc.storage {
@@ -64,39 +73,46 @@ impl Verby {
     }
 
     fn verbs_list(&mut self, ui: &mut egui::Ui) {
+        if self.labels.is_empty() {
+            for verbs in &self.verbs {
+                self.labels.push(verbs.0.clone());
+                self.labels.push(verbs.1.clone());
+                self.labels.push(verbs.2.clone());
+            }
+        }
         ui.add_space(10.0);
 
-        ui.spacing_mut().item_spacing = [10.0, 10.0].into();
-        ui.columns(3, |cols| {
-            // let width = (ui.available_width() - margin * 2.0) / 3.0;
-            for (row_idx, row) in &mut self.labels.iter_mut().enumerate() {
-                for (col_idx, label) in &mut row.iter_mut().enumerate() {
-                    cols[col_idx].vertical_centered_justified(|ui| {
-                        let index = self.selection.iter().position(|s| s == &(row_idx, col_idx));
-                        let mut text = label.to_owned();
-                        if let Some(idx) = index {
-                            text = format!("{} #{}", label, idx + 1);
-                        }
-                        let resp = ui.selectable_label(
-                            index.is_some(),
-                            RichText::new(text)
-                                .monospace()
-                                .text_style(egui::TextStyle::Button)
-                                .size(30.0),
-                        );
-                        if resp.clicked() {
+        egui::ScrollArea::vertical().show(ui, |ui| {
+            ui.spacing_mut().item_spacing = [10.0, 10.0].into();
+            ui.columns(3, |cols| {
+                // let width = (ui.available_width() - margin * 2.0) / 3.0;
+                for (row_idx, row) in self.labels.chunks(3).enumerate() {
+                    for (col_idx, label) in &mut row.iter().enumerate() {
+                        cols[col_idx].vertical_centered_justified(|ui| {
+                            let index =
+                                self.selection.iter().position(|s| s == &(row_idx, col_idx));
+                            let mut text = label.to_owned();
                             if let Some(idx) = index {
-                                self.selection.remove(idx);
-                            } else {
-                                if self.selection.len() > 2 {
-                                    self.selection.truncate(2);
-                                }
-                                self.selection.push((row_idx, col_idx));
+                                text = format!("{} #{}", label, idx + 1);
                             }
-                        }
-                    });
+                            let resp = ui.selectable_label(
+                                index.is_some(),
+                                RichText::new(text).monospace().strong(),
+                            );
+                            if resp.clicked() {
+                                if let Some(idx) = index {
+                                    self.selection.remove(idx);
+                                } else {
+                                    if self.selection.len() > 2 {
+                                        self.selection.truncate(2);
+                                    }
+                                    self.selection.push((row_idx, col_idx));
+                                }
+                            }
+                        });
+                    }
                 }
-            }
+            });
         });
     }
 
@@ -107,15 +123,15 @@ impl Verby {
             cols[1].vertical_centered_justified(|ui| ui.text_edit_singleline(&mut self.second));
             cols[2].vertical_centered_justified(|ui| ui.text_edit_singleline(&mut self.third));
         });
-        ui.add_space(10.0);
+        ui.add_space(5.0);
         ui.vertical_centered_justified(|ui| {
-            let btn = Button::new(RichText::new("Add verb").color(Color32::BLACK).heading());
+            let btn = Button::new("Add verb");
 
             let len1 = self.first.len();
             let len2 = self.second.len();
             let len3 = self.third.len();
             let item = (self.first.clone(), self.second.clone(), self.third.clone());
-            if len1 == 0 || len2 == 0 || len3 == 0 || self.verbs.contains(&item){
+            if len1 == 0 || len2 == 0 || len3 == 0 || self.verbs.contains(&item) {
                 ui.add_enabled(false, btn);
             } else if len1 < 3 || len2 < 3 || len3 < 3 {
                 btn.fill(Color32::LIGHT_RED).ui(ui);
@@ -123,42 +139,43 @@ impl Verby {
                 self.verbs.push(item);
             }
         });
+        ui.add_space(10.0);
         egui::ScrollArea::vertical().show(ui, |ui| {
-            ui.vertical_centered_justified(|ui| {
-                // ui.spacing_mut().item_spacing.x = 0.0;
-                let table = TableBuilder::new(ui)
-                    .columns(Column::auto(), 3)
-                    .striped(true)
-                    .cell_layout(egui::Layout::centered_and_justified(
-                        egui::Direction::LeftToRight,
-                    ));
-                table
-                    .header(20.0, |mut header| {
-                        header.col(|ui| {
-                            ui.heading("First form");
+            let width = ui.available_width();
+            ui.spacing_mut().item_spacing.x = 0.0;
+            //ui.spacing_mut().item_spacing.x += 5.0;
+            let table = TableBuilder::new(ui)
+                .columns(Column::initial(width / 3.0), 3)
+                .striped(true)
+                .cell_layout(egui::Layout::centered_and_justified(
+                    egui::Direction::LeftToRight,
+                ));
+            table
+                .header(20.0, |mut header| {
+                    header.col(|ui| {
+                        ui.strong("First form");
+                    });
+                    header.col(|ui| {
+                        ui.strong("Second form");
+                    });
+                    header.col(|ui| {
+                        ui.strong("Third form");
+                    });
+                })
+                .body(|body| {
+                    body.rows(20.0, self.verbs.len(), |mut row| {
+                        let idx = row.index();
+                        row.col(|ui| {
+                            ui.label(&self.verbs[idx].0);
                         });
-                        header.col(|ui| {
-                            ui.heading("Second form");
+                        row.col(|ui| {
+                            ui.label(&self.verbs[idx].1);
                         });
-                        header.col(|ui| {
-                            ui.heading("Third form");
-                        });
-                    })
-                    .body(|body| {
-                        body.rows(20.0, self.verbs.len(), |mut row| {
-                            let idx = row.index();
-                            row.col(|ui| {
-                                ui.label(&self.verbs[idx].0);
-                            });
-                            row.col(|ui| {
-                                ui.label(&self.verbs[idx].1);
-                            });
-                            row.col(|ui| {
-                                ui.label(&self.verbs[idx].2);
-                            });
+                        row.col(|ui| {
+                            ui.label(&self.verbs[idx].2);
                         });
                     });
-            });
+                });
         });
     }
 }
@@ -171,7 +188,7 @@ impl eframe::App for Verby {
 
     /// Called each time the UI needs repainting, which may be many times per second.
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
-        // Put your widgets into a `SidePanel`, `TopBottomPanel`, `CentralPanel`, `Window` or `Area`.
+        // Put your widget
         // For inspiration and more examples, go to https://emilk.github.io/egui
 
         egui::TopBottomPanel::top("top_panel").show(ctx, |ui| {
@@ -182,7 +199,7 @@ impl eframe::App for Verby {
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::TOP), |ui| {
                     egui::widgets::global_dark_light_mode_buttons(ui);
                     ui.add_space(16.0);
-                    ui.toggle_value(&mut self.edit_mode, RichText::new("Edit verbs").heading());
+                    ui.toggle_value(&mut self.edit_mode, "Edit verbs");
                 });
             });
             ui.add_space(10.0);
