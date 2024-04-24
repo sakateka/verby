@@ -3,6 +3,8 @@ use egui::FontId;
 use egui::TextStyle::*;
 use egui::{Button, Color32, RichText, Widget};
 
+const COLUMNS: usize = 3;
+
 /// We derive Deserialize/Serialize so we can persist app state on shutdown.
 #[derive(serde::Deserialize, serde::Serialize)]
 #[serde(default)] // if we add new fields, give them default values when deserializing old state
@@ -20,6 +22,7 @@ pub struct Verby {
     verbs: Vec<(String, String, String)>,
     labels: Vec<String>,
     selection: Vec<(usize, usize)>,
+    deleted: Vec<usize>,
 }
 
 impl Default for Verby {
@@ -36,6 +39,7 @@ impl Default for Verby {
             )],
             labels: vec![],
             selection: Vec::new(),
+            deleted: Vec::new(),
         }
     }
 }
@@ -84,9 +88,9 @@ impl Verby {
 
         egui::ScrollArea::vertical().show(ui, |ui| {
             ui.spacing_mut().item_spacing = [10.0, 10.0].into();
-            ui.columns(3, |cols| {
+            ui.columns(COLUMNS, |cols| {
                 // let width = (ui.available_width() - margin * 2.0) / 3.0;
-                for (row_idx, row) in self.labels.chunks(3).enumerate() {
+                for (row_idx, row) in self.labels.chunks(COLUMNS).enumerate() {
                     for (col_idx, label) in &mut row.iter().enumerate() {
                         cols[col_idx].vertical_centered_justified(|ui| {
                             let index =
@@ -113,7 +117,33 @@ impl Verby {
                     }
                 }
             });
+            if self.selection.len() == COLUMNS && self.check_selection() {
+                ui.ctx().request_repaint();
+            }
         });
+    }
+    fn check_selection(&mut self) -> bool {
+        let idx1 = self.selection[0].0 * COLUMNS + self.selection[0].1;
+        let idx2 = self.selection[1].0 * COLUMNS + self.selection[1].1;
+        let idx3 = self.selection[2].0 * COLUMNS + self.selection[2].1;
+        let row = &(
+            self.labels[idx1].clone(),
+            self.labels[idx2].clone(),
+            self.labels[idx3].clone(),
+        );
+        if !self.verbs.contains(row) {
+            return false;
+        }
+        let mut to_remove = [idx1, idx2, idx3];
+        to_remove.sort();
+
+        for (sub, idx) in to_remove.iter().enumerate() {
+            let idx_to_remove = idx - sub;
+            log::debug!("remove idx {idx_to_remove}");
+            self.labels.remove(idx_to_remove);
+        }
+        self.selection.clear();
+        true
     }
 
     fn edit_mode(&mut self, ui: &mut egui::Ui) {
@@ -141,11 +171,12 @@ impl Verby {
         });
         ui.add_space(10.0);
         egui::ScrollArea::vertical().show(ui, |ui| {
-            let width = ui.available_width();
+            let width = ui.available_width() - 30.0;
             ui.spacing_mut().item_spacing.x = 0.0;
             //ui.spacing_mut().item_spacing.x += 5.0;
             let table = TableBuilder::new(ui)
-                .columns(Column::initial(width / 3.0), 3)
+                .columns(Column::auto(), 3)
+                .column(Column::exact(30.0))
                 .striped(true)
                 .cell_layout(egui::Layout::centered_and_justified(
                     egui::Direction::LeftToRight,
@@ -161,6 +192,9 @@ impl Verby {
                     header.col(|ui| {
                         ui.strong("Third form");
                     });
+                    header.col(|ui| {
+                        ui.strong("Del");
+                    });
                 })
                 .body(|body| {
                     body.rows(20.0, self.verbs.len(), |mut row| {
@@ -174,8 +208,21 @@ impl Verby {
                         row.col(|ui| {
                             ui.label(&self.verbs[idx].2);
                         });
+                        row.col(|ui| {
+                            if ui.button(RichText::new("❌").color(Color32::RED)).clicked() {
+                                self.deleted.push(idx);
+                            }
+                        });
                     });
                 });
+            if !self.deleted.is_empty() {
+                for idx in &self.deleted {
+                    self.verbs.remove(*idx);
+                }
+                self.selection.clear();
+                self.labels.clear();
+            }
+            self.deleted.clear();
         });
     }
 }
@@ -184,6 +231,7 @@ impl eframe::App for Verby {
     /// Called by the frame work to save state before shutdown.
     fn save(&mut self, storage: &mut dyn eframe::Storage) {
         eframe::set_value(storage, eframe::APP_KEY, self);
+        storage.flush();
     }
 
     /// Called each time the UI needs repainting, which may be many times per second.
@@ -199,7 +247,12 @@ impl eframe::App for Verby {
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::TOP), |ui| {
                     egui::widgets::global_dark_light_mode_buttons(ui);
                     ui.add_space(16.0);
+
                     ui.toggle_value(&mut self.edit_mode, "Edit verbs");
+                    if ui.button("Reset").clicked() {
+                        self.labels.clear();
+                        self.selection.clear();
+                    }
                 });
             });
             ui.add_space(10.0);
