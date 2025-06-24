@@ -3,8 +3,7 @@ use egui::FontId;
 use egui::TextStyle::*;
 use egui::{Button, Color32, RichText, Widget};
 
-// egui_keyboard is only available on Android and Desktop, not WASM
-#[cfg(not(target_arch = "wasm32"))]
+// egui_keyboard is available on Android and Desktop
 use egui_keyboard::Keyboard;
 
 const COLUMNS: usize = 3;
@@ -28,14 +27,11 @@ pub struct Verby {
     selection: Vec<(usize, usize)>,
     deleted: Vec<usize>,
 
-    // Keyboard support only on non-WASM platforms
-    #[cfg(not(target_arch = "wasm32"))]
+    // Keyboard support
     #[serde(skip)]
     keyboard: Keyboard,
-    #[cfg(not(target_arch = "wasm32"))]
     #[serde(skip)]
     show_keyboard: bool,
-    #[cfg(not(target_arch = "wasm32"))]
     #[serde(skip)]
     active_field: Option<usize>, // 0=first, 1=second, 2=third
 }
@@ -56,12 +52,9 @@ impl Default for Verby {
             selection: Vec::new(),
             deleted: Vec::new(),
 
-            // Keyboard fields only on non-WASM platforms
-            #[cfg(not(target_arch = "wasm32"))]
+            // Keyboard fields
             keyboard: Keyboard::default(),
-            #[cfg(not(target_arch = "wasm32"))]
             show_keyboard: false,
-            #[cfg(not(target_arch = "wasm32"))]
             active_field: None,
         }
     }
@@ -182,69 +175,46 @@ impl Verby {
     fn edit_mode(&mut self, ui: &mut egui::Ui) {
         use egui_extras::{Column, TableBuilder};
 
-        // IMPORTANT: pump_events must be called before any widgets are created (non-WASM only)
-        #[cfg(not(target_arch = "wasm32"))]
+        // IMPORTANT: pump_events must be called before any widgets are created
         self.keyboard.pump_events(ui.ctx());
 
         ui.columns(3, |cols| {
             cols[0].vertical_centered_justified(|ui| {
                 let response = ui.text_edit_singleline(&mut self.first);
-                #[cfg(not(target_arch = "wasm32"))]
-                {
-                    if response.clicked() {
-                        self.show_keyboard = true;
-                        self.active_field = Some(0);
-                    }
-                    // Auto-focus when this field is active (non-WASM only)
-                    if self.active_field == Some(0) {
-                        response.request_focus();
-                    }
+                if response.clicked() {
+                    self.show_keyboard = true;
+                    self.active_field = Some(0);
                 }
-                #[cfg(target_arch = "wasm32")]
-                {
-                    let _ = response; // Suppress unused variable warning
+                // Auto-focus when this field is active
+                if self.active_field == Some(0) {
+                    response.request_focus();
                 }
             });
             cols[1].vertical_centered_justified(|ui| {
                 let response = ui.text_edit_singleline(&mut self.second);
-                #[cfg(not(target_arch = "wasm32"))]
-                {
-                    if response.clicked() {
-                        self.show_keyboard = true;
-                        self.active_field = Some(1);
-                    }
-                    // Auto-focus when this field is active (non-WASM only)
-                    if self.active_field == Some(1) {
-                        response.request_focus();
-                    }
+                if response.clicked() {
+                    self.show_keyboard = true;
+                    self.active_field = Some(1);
                 }
-                #[cfg(target_arch = "wasm32")]
-                {
-                    let _ = response; // Suppress unused variable warning
+                // Auto-focus when this field is active
+                if self.active_field == Some(1) {
+                    response.request_focus();
                 }
             });
             cols[2].vertical_centered_justified(|ui| {
                 let response = ui.text_edit_singleline(&mut self.third);
-                #[cfg(not(target_arch = "wasm32"))]
-                {
-                    if response.clicked() {
-                        self.show_keyboard = true;
-                        self.active_field = Some(2);
-                    }
-                    // Auto-focus when this field is active (non-WASM only)
-                    if self.active_field == Some(2) {
-                        response.request_focus();
-                    }
+                if response.clicked() {
+                    self.show_keyboard = true;
+                    self.active_field = Some(2);
                 }
-                #[cfg(target_arch = "wasm32")]
-                {
-                    let _ = response; // Suppress unused variable warning
+                // Auto-focus when this field is active
+                if self.active_field == Some(2) {
+                    response.request_focus();
                 }
             });
         });
 
-        // Show keyboard if requested (non-WASM only)
-        #[cfg(not(target_arch = "wasm32"))]
+        // Show keyboard if requested
         if self.show_keyboard {
             egui::TopBottomPanel::bottom("keyboard").show(ui.ctx(), |ui| {
                 ui.horizontal(|ui| {

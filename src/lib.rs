@@ -1,8 +1,5 @@
-#![warn(clippy::all, rust_2018_idioms)]
-
 mod app;
 pub use app::Verby;
-
 // Android entry point
 #[cfg(target_os = "android")]
 #[no_mangle]
@@ -28,3 +25,4 @@ fn android_main(app: winit::platform::android::activity::AndroidApp) {
     )
     .unwrap()
 }
+
