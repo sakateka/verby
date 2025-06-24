@@ -377,10 +377,8 @@ impl eframe::App for Verby {
                         if ui.button("🌙").on_hover_text("Dark mode").clicked() {
                             ui.ctx().set_visuals(egui::Visuals::light());
                         }
-                    } else {
-                        if ui.button("☀").on_hover_text("Light mode").clicked() {
-                            ui.ctx().set_visuals(egui::Visuals::dark());
-                        }
+                    } else if ui.button("☀").on_hover_text("Light mode").clicked() {
+                        ui.ctx().set_visuals(egui::Visuals::dark());
                     }
                     ui.add_space(16.0);
 
