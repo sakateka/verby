@@ -3,6 +3,10 @@ use egui::FontId;
 use egui::TextStyle::*;
 use egui::{Button, Color32, RichText, Widget};
 
+// egui_keyboard is only available on Android and Desktop, not WASM
+#[cfg(not(target_arch = "wasm32"))]
+use egui_keyboard::Keyboard;
+
 const COLUMNS: usize = 3;
 
 /// We derive Deserialize/Serialize so we can persist app state on shutdown.
@@ -23,6 +27,17 @@ pub struct Verby {
     labels: Vec<String>,
     selection: Vec<(usize, usize)>,
     deleted: Vec<usize>,
+
+    // Keyboard support only on non-WASM platforms
+    #[cfg(not(target_arch = "wasm32"))]
+    #[serde(skip)]
+    keyboard: Keyboard,
+    #[cfg(not(target_arch = "wasm32"))]
+    #[serde(skip)]
+    show_keyboard: bool,
+    #[cfg(not(target_arch = "wasm32"))]
+    #[serde(skip)]
+    active_field: Option<usize>, // 0=first, 1=second, 2=third
 }
 
 impl Default for Verby {
@@ -40,6 +55,14 @@ impl Default for Verby {
             labels: vec![],
             selection: Vec::new(),
             deleted: Vec::new(),
+
+            // Keyboard fields only on non-WASM platforms
+            #[cfg(not(target_arch = "wasm32"))]
+            keyboard: Keyboard::default(),
+            #[cfg(not(target_arch = "wasm32"))]
+            show_keyboard: false,
+            #[cfg(not(target_arch = "wasm32"))]
+            active_field: None,
         }
     }
 }
@@ -69,8 +92,18 @@ impl Verby {
         cc.egui_ctx.set_style(style);
         // Load previous app state (if any).
         // Note that you must enable the `persistence` feature for this to work.
+        log::info!("Checking for storage availability...");
         if let Some(storage) = cc.storage {
-            return eframe::get_value(storage, eframe::APP_KEY).unwrap_or_default();
+            log::info!("✅ Storage is available! Loading previous state...");
+            let loaded_app: Self = eframe::get_value(storage, eframe::APP_KEY).unwrap_or_default();
+            log::info!(
+                "✅ Successfully loaded {} verbs from storage",
+                loaded_app.verbs.len()
+            );
+            return loaded_app;
+        } else {
+            log::warn!("❌ No storage available! Android persistence may not be working");
+            log::warn!("Creating new default app - state will not persist");
         }
 
         Default::default()
@@ -148,11 +181,95 @@ impl Verby {
 
     fn edit_mode(&mut self, ui: &mut egui::Ui) {
         use egui_extras::{Column, TableBuilder};
+
+        // IMPORTANT: pump_events must be called before any widgets are created (non-WASM only)
+        #[cfg(not(target_arch = "wasm32"))]
+        self.keyboard.pump_events(ui.ctx());
+
         ui.columns(3, |cols| {
-            cols[0].vertical_centered_justified(|ui| ui.text_edit_singleline(&mut self.first));
-            cols[1].vertical_centered_justified(|ui| ui.text_edit_singleline(&mut self.second));
-            cols[2].vertical_centered_justified(|ui| ui.text_edit_singleline(&mut self.third));
+            cols[0].vertical_centered_justified(|ui| {
+                let response = ui.text_edit_singleline(&mut self.first);
+                #[cfg(not(target_arch = "wasm32"))]
+                {
+                    if response.clicked() {
+                        self.show_keyboard = true;
+                        self.active_field = Some(0);
+                    }
+                    // Auto-focus when this field is active (non-WASM only)
+                    if self.active_field == Some(0) {
+                        response.request_focus();
+                    }
+                }
+                #[cfg(target_arch = "wasm32")]
+                {
+                    let _ = response; // Suppress unused variable warning
+                }
+            });
+            cols[1].vertical_centered_justified(|ui| {
+                let response = ui.text_edit_singleline(&mut self.second);
+                #[cfg(not(target_arch = "wasm32"))]
+                {
+                    if response.clicked() {
+                        self.show_keyboard = true;
+                        self.active_field = Some(1);
+                    }
+                    // Auto-focus when this field is active (non-WASM only)
+                    if self.active_field == Some(1) {
+                        response.request_focus();
+                    }
+                }
+                #[cfg(target_arch = "wasm32")]
+                {
+                    let _ = response; // Suppress unused variable warning
+                }
+            });
+            cols[2].vertical_centered_justified(|ui| {
+                let response = ui.text_edit_singleline(&mut self.third);
+                #[cfg(not(target_arch = "wasm32"))]
+                {
+                    if response.clicked() {
+                        self.show_keyboard = true;
+                        self.active_field = Some(2);
+                    }
+                    // Auto-focus when this field is active (non-WASM only)
+                    if self.active_field == Some(2) {
+                        response.request_focus();
+                    }
+                }
+                #[cfg(target_arch = "wasm32")]
+                {
+                    let _ = response; // Suppress unused variable warning
+                }
+            });
         });
+
+        // Show keyboard if requested (non-WASM only)
+        #[cfg(not(target_arch = "wasm32"))]
+        if self.show_keyboard {
+            egui::TopBottomPanel::bottom("keyboard").show(ui.ctx(), |ui| {
+                ui.horizontal(|ui| {
+                    if ui.button("Hide Keyboard").clicked() {
+                        self.show_keyboard = false;
+                        self.active_field = None;
+                    }
+                });
+
+                // Show the virtual keyboard
+                self.keyboard.show(ui.ctx());
+
+                // Show which field is active
+                if let Some(field_idx) = self.active_field {
+                    let field_name = match field_idx {
+                        0 => "First form",
+                        1 => "Second form",
+                        2 => "Third form",
+                        _ => "Unknown",
+                    };
+                    ui.label(format!("Editing: {}", field_name));
+                }
+            });
+        }
+
         ui.add_space(5.0);
         ui.vertical_centered_justified(|ui| {
             let btn = Button::new("Add verb");
@@ -167,11 +284,14 @@ impl Verby {
                 btn.fill(Color32::LIGHT_RED).ui(ui);
             } else if btn.fill(Color32::LIGHT_GREEN).ui(ui).clicked() {
                 self.verbs.push(item);
+                self.first.clear();
+                self.second.clear();
+                self.third.clear();
             }
         });
         ui.add_space(10.0);
         egui::ScrollArea::vertical().show(ui, |ui| {
-            let width = ui.available_width() - 30.0;
+            let _width = ui.available_width() - 30.0;
             ui.spacing_mut().item_spacing.x = 0.0;
             //ui.spacing_mut().item_spacing.x += 5.0;
             let table = TableBuilder::new(ui)
@@ -231,11 +351,17 @@ impl eframe::App for Verby {
     /// Called by the frame work to save state before shutdown.
     fn save(&mut self, storage: &mut dyn eframe::Storage) {
         eframe::set_value(storage, eframe::APP_KEY, self);
-        storage.flush();
     }
 
     /// Called each time the UI needs repainting, which may be many times per second.
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        // Reserve some space at the top so the UI isn't hidden behind the android status bar
+        // TODO: This is a workaround until safe_area is implemented for android
+        #[cfg(target_os = "android")]
+        egui::TopBottomPanel::top("status_bar_space").show(ctx, |ui| {
+            ui.set_height(32.0);
+        });
+
         // Put your widget
         // For inspiration and more examples, go to https://emilk.github.io/egui
 
@@ -245,7 +371,17 @@ impl eframe::App for Verby {
             // The top panel is often a good place for a menu bar:
             egui::menu::bar(ui, |ui| {
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::TOP), |ui| {
-                    egui::widgets::global_dark_light_mode_buttons(ui);
+                    // Custom theme buttons (Light/Dark only, no System)
+                    let visuals = ui.ctx().style().visuals.clone();
+                    if visuals.dark_mode {
+                        if ui.button("🌙").on_hover_text("Dark mode").clicked() {
+                            ui.ctx().set_visuals(egui::Visuals::light());
+                        }
+                    } else {
+                        if ui.button("☀").on_hover_text("Light mode").clicked() {
+                            ui.ctx().set_visuals(egui::Visuals::dark());
+                        }
+                    }
                     ui.add_space(16.0);
 
                     ui.toggle_value(&mut self.edit_mode, "Edit verbs");

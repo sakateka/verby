@@ -2,8 +2,8 @@ var cacheName = 'egui-template-pwa';
 var filesToCache = [
   './',
   './index.html',
-  './verby.js',
-  './verby_bg.wasm',
+  // Note: JS and WASM files are not cached here because their names include hashes that change with each build
+  // The browser will handle caching these files appropriately
 ];
 
 /* Start the service worker and cache all of the app's content */
